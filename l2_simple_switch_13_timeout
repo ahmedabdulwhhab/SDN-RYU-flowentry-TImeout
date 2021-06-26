@@ -34,7 +34,7 @@ class SimpleSwitch13(app_manager.RyuApp):
     def __init__(self, *args, **kwargs):
         super(SimpleSwitch13, self).__init__(*args, **kwargs)
         self.mac_to_port = {}
-        configuration_add_flow = false
+        self.configuration_add_flow = 1
 
     @set_ev_cls(ofp_event.EventOFPSwitchFeatures, CONFIG_DISPATCHER)
     def switch_features_handler(self, ev):
@@ -52,7 +52,7 @@ class SimpleSwitch13(app_manager.RyuApp):
         match = parser.OFPMatch()
         actions = [parser.OFPActionOutput(ofproto.OFPP_CONTROLLER,
                                           ofproto.OFPCML_NO_BUFFER)]
-        configuration_add_flow = false
+        self.configuration_add_flow = 1
         self.add_flow(datapath, 0, match, actions)
 
     def add_flow(self, datapath, priority, match, actions, buffer_id=None):
@@ -62,27 +62,28 @@ class SimpleSwitch13(app_manager.RyuApp):
         inst = [parser.OFPInstructionActions(ofproto.OFPIT_APPLY_ACTIONS,
                                              actions)]
         if buffer_id:
-            if !configuration_add_flow:
-                mod = parser.OFPFlowMod(datapath=datapath, buffer_id=buffer_id,
-                                    idle_timeout=30, hard_timeout=40,   ##new
-                                    priority=priority, match=match,
-                                    instructions=inst)
-                configuration_add_flow = true
-            else:
+            if self.configuration_add_flow:
                 mod = parser.OFPFlowMod(datapath=datapath, buffer_id=buffer_id,
                                     #idle_timeout=30,    ##new
                                     priority=priority, match=match,
                                     instructions=inst)
+            else:
+                mod = parser.OFPFlowMod(datapath=datapath, buffer_id=buffer_id,
+                                    idle_timeout=30, hard_timeout=40,   ##new
+                                    priority=priority, match=match,
+                                    instructions=inst)
                                     
         else:
-            if !configuration_add_flow:
+            if self.configuration_add_flow:
+                mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
+                                    #idle_timeout=30, hard_timeout=40,   ##new
+                                    match=match, instructions=inst)            
+            else:
                 mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
                                     idle_timeout=30, hard_timeout=40,   ##new
                                     match=match, instructions=inst)
-            else:
-                mod = parser.OFPFlowMod(datapath=datapath, priority=priority,
-                                    #idle_timeout=30, hard_timeout=40,   ##new
-                                    match=match, instructions=inst)
+               
+        self.configuration_add_flow = 0
         datapath.send_msg(mod)
 
     
@@ -109,14 +110,7 @@ class SimpleSwitch13(app_manager.RyuApp):
             return
         dst = eth.dst
         src = eth.src
-        ######
-        
 
-         for p in pkt.protocols:
-             if hasattr(p, 'protocol_name') is False:
-                 break
-             print('p: %s' % p.protocol_name)    
-        ######
 
         dpid = format(datapath.id, "d").zfill(16)
         self.mac_to_port.setdefault(dpid, {})
@@ -132,6 +126,9 @@ class SimpleSwitch13(app_manager.RyuApp):
             out_port = ofproto.OFPP_FLOOD
 
         actions = [parser.OFPActionOutput(out_port)]
+        
+        ##before add_flow
+        self.configuration_add_flow = 0 
 
         # install a flow to avoid packet_in next time
         if out_port != ofproto.OFPP_FLOOD:
